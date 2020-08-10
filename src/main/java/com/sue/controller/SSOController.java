@@ -3,6 +3,7 @@ package com.sue.controller;
 import com.sue.pojo.Users;
 import com.sue.pojo.vo.UsersVO;
 import com.sue.service.mallservice.UserService;
+import com.sue.utils.IMOOCJSONResult;
 import com.sue.utils.JsonUtils;
 import com.sue.utils.MD5Utils;
 import com.sue.utils.RedisOperator;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
@@ -117,8 +119,53 @@ public class SSOController {
          *
          */
 
+        /**
+         * 举例:
+         *      我们去动物园玩，大门口买了一张统一的门票，这个就是CAS系统的全局门票和用户全局会话
+         *      动物园里有一些小的景点，需要凭你的门票取领取一次性的票据，有了这张票据以后就能去一些小的景点游玩
+         *      这样的一个个小的景点就是我们这里所对应的一个个的站点
+         *      当我们使用完毕临时票据后，就需要销毁
+         */
+
+
+
 
         return "redirect:"+returnUrl+"?tmpTicket="+tmpTicket;
+    }
+
+
+    @PostMapping("/verifyTmpTicket")
+    @ResponseBody
+    public IMOOCJSONResult verifyTmpTicket(
+            String tmpTicket,
+            HttpServletRequest request,HttpServletResponse response){
+        //使用一次性临时票据来验证用户是否登录，如果登陆过，把用户会话信息返回给站点
+        //使用完毕后需要销毁临时票据
+        String tmpTicketValue = redisOperator.get(REDIS_TMP_TICKET+":"+tmpTicket);
+        if(StringUtils.isBlank(tmpTicketValue)){
+            return IMOOCJSONResult.errorUserTicket("用户临时票据异常");
+        }
+        //如果临时票据ok，则需要销毁，并且拿到cas端cookie中的全局userticket，以此获取用户会话
+        if(!tmpTicketValue.equals(MD5Utils.getMD5Str(tmpTicket))){
+            return IMOOCJSONResult.errorUserTicket("用户临时票据异常");
+        }else{
+            //销毁临时票据
+            redisOperator.del(REDIS_TMP_TICKET+":"+tmpTicket);
+        }
+
+        //验证并且获得用户cookie
+        String userTicket = getCookie(request,COOKIE_USER_TICKET);
+        String userId = redisOperator.get(REDIS_USER_TICKET + ":"+userTicket);
+        if(StringUtils.isBlank(userId)){
+            return IMOOCJSONResult.errorUserTicket("用户票据异常");
+        }
+        //验证门票对应的user会话是否存在
+        String userRedis = redisOperator.get(REDIS_USER_TOKEN+":"+userId);
+        if(StringUtils.isBlank(userId)){
+            return IMOOCJSONResult.errorUserTicket("用户票据异常");
+        }
+
+        return IMOOCJSONResult.ok(JsonUtils.jsonToPojo(userRedis,UsersVO.class));
     }
 
 
@@ -138,4 +185,20 @@ public class SSOController {
         cookie.setPath("/");
         response.addCookie(cookie);
     }
+
+    private String getCookie(HttpServletRequest request,String key){
+        Cookie[] cookies = request.getCookies();
+        if(cookies == null || StringUtils.isBlank(key)){
+            return null;
+        }
+        String cookieValue = null;
+        for(int i = 0;i<cookies.length;i++){
+            if(cookies[i].getName().equals(key)){
+                cookieValue = cookies[i].getValue();
+                break;
+            }
+        }
+        return cookieValue;
+    }
+
 }
