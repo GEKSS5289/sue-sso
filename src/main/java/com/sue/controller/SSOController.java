@@ -47,8 +47,39 @@ public class SSOController {
     public String login(String returnUrl, Model model, HttpServletRequest request, HttpServletResponse response){
         model.addAttribute("returnUrl",request);
 
+        //获取ticket门票,如果cookie中能够获取到，证明用户登陆过，此时签发一个一次性的临时门票
+        String userTicket = getCookie(request,COOKIE_USER_TICKET);
+
+        if(verifyUserTicket(userTicket)){
+            String tmpTicket = createTmpTicket();
+            return "redirect:"+returnUrl+"?tmpTicket="+tmpTicket;
+        }
+
         //用户从未登录过，第一次进入则跳转到CAS的统一登录界面
         return "login";
+    }
+
+    /**
+     * 校验CAS全局用户门票
+     * @param userTicket
+     * @return
+     */
+    private boolean verifyUserTicket(String userTicket){
+        //验证CAS门票不能为空
+        if(StringUtils.isBlank(userTicket)){
+            return false;
+        }
+        //验证CAS门票是否有效
+        String userId = redisOperator.get(REDIS_USER_TICKET + ":" + userTicket);
+        if(StringUtils.isBlank(userId)){
+            return false;
+        }
+        //验证门票对应的user会话是否存在
+        String userRedis = redisOperator.get(REDIS_USER_TOKEN+":"+userId);
+        if(StringUtils.isBlank(userRedis)){
+            return false;
+        }
+        return true;
     }
 
 
