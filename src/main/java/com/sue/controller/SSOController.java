@@ -232,4 +232,24 @@ public class SSOController {
         return cookieValue;
     }
 
+    @PostMapping("/logout")
+    @ResponseBody
+    public IMOOCJSONResult logout(String userId,HttpServletRequest request,HttpServletResponse response){
+        String userTicket = getCookie(request,COOKIE_USER_TICKET);
+        deleteCookie(COOKIE_USER_TICKET,response);
+        redisOperator.del(REDIS_USER_TICKET+":"+userTicket);
+        //清楚用户全局会话
+        redisOperator.del(REDIS_USER_TOKEN+":"+userId);
+        return IMOOCJSONResult.ok();
+    }
+
+
+    private void deleteCookie(String key,HttpServletResponse response){
+        Cookie cookie = new Cookie(key,null);
+        cookie.setDomain("sso.com");
+        cookie.setPath("/");
+        cookie.setMaxAge(-1);
+        response.addCookie(cookie);
+    }
+
 }
